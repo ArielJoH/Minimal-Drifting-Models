@@ -132,11 +132,13 @@ def normalize_features(
 
     if scale is None:
         with torch.no_grad():
-            self_dists_prescale = torch.cdist(features_std, features_std)
-            mask = ~torch.eye(features.shape[0], dtype=torch.bool, device=features.device)
-            avg_dist = self_dists_prescale[mask].mean()
-            scale = (D ** 0.5 / (avg_dist + 1e-8)).item()
-            self_dists = self_dists_prescale * scale
+            f_sq = (features_std * features_std).sum(dim=-1, keepdim=True)
+            dist2 = f_sq + f_sq.t() - 2.0 * features_std @ features_std.t()
+            dist2.clamp_(min=0.0)
+            N = features.shape[0]
+            dist2.fill_diagonal_(0.0)
+            avg_dist_sq = dist2.sum() / (N * (N - 1))
+            scale = (D / (avg_dist_sq + 1e-8)).sqrt()
 
     return features_std * scale, mean, std, scale, self_dists
 
@@ -149,11 +151,10 @@ def normalize_features(
 #
 #   V(x) = (1 / (Z_p Z_q)) E_{y+~p, y-~q}[ k(x,y+) k(x,y-) (y+ - y-) ]
 #
-# where k(x,y) = exp(-||x-y|| / tau).
+# where k(x,y) = exp(-||x-y||^2 / tau)  (Gaussian kernel).
 #
-# In our usage y_neg = x always (the "current" distribution is both the query
-# and the negative reference).  We exploit this: the self-distance matrix
-# computed during normalization is reused as dist_neg, saving one O(N^2) cdist.
+# Squared distances via ||x-y||^2 = ||x||^2 + ||y||^2 - 2*x@y^T,
+# which reduces to a GEMM and is much faster than cdist.
 #
 
 def normalize_drift(V: Tensor, target_variance: float = 1.0) -> Tensor:
@@ -195,19 +196,18 @@ def compute_drift(
     y_pos_n, _, _, _, _ = normalize_features(y_pos, mean=mean, std=std, scale=scale)
     y_neg_n, _, _, _, _ = normalize_features(y_neg, mean=mean, std=std, scale=scale)
 
-    dist_pos = torch.cdist(x_n, y_pos_n)                          # [N, N_pos]
-    dist_neg = torch.cdist(x_n, y_neg_n)                          # [N, N_neg]
+    # Single GEMM: Sinkhorn absorbs per-row/per-col additive constants
+    # (||x||^2, ||y||^2), so logit = 2*x@y^T / temp suffices
+    y_all = torch.cat([y_pos_n, y_neg_n], dim=0)                   # [N_pos + N_neg, D]
+    dots = x_n @ y_all.t()                                         # [N, N_pos + N_neg]
 
     # mask self-interactions (y_neg = x in standard usage)
     if N == N_neg:
-        dist_neg = dist_neg + torch.eye(N, device=x.device) * 1e6
+        dots[:, N_pos:].fill_diagonal_(-1e6)
 
     V = torch.zeros_like(x)
     for temp in temps:
-        logit = torch.cat([
-            -dist_pos / temp,
-            -dist_neg / temp,
-        ], dim=1)                                                  # [N, N_pos + N_neg]
+        logit = (2.0 / temp) * dots                                # [N, N_pos + N_neg]
 
         # Sinkhorn: doubly-stochastic transport plan over pos+neg
         for _ in range(10):
@@ -429,7 +429,7 @@ if __name__ == "__main__":
 
     print("\n--- Training on 8 Gaussians ---")
     model = DriftingAutoencoder(data_dim=2, hidden_dim=256, latent_dim=2).to(DEVICE)
-    train(model, gen_data, tag="8gauss", n_iter=10_000, batch_size=2048)
+    train(model, gen_data, tag="8gauss", n_iter=100_000, batch_size=2048)
 
     model.eval()
     data_final = gen_data(4096)
@@ -439,7 +439,7 @@ if __name__ == "__main__":
 
     print("\n--- Training on Checkerboard ---")
     model2 = DriftingAutoencoder(data_dim=2, hidden_dim=256, latent_dim=2).to(DEVICE)
-    train(model2, gen_checkerboard, tag="checker", n_iter=10_000, batch_size=2048)
+    train(model2, gen_checkerboard, tag="checker", n_iter=100_000, batch_size=2048)
 
     model2.eval()
     data_final2 = gen_checkerboard(4096)
@@ -447,3 +447,4 @@ if __name__ == "__main__":
     viz_2d_data(model2.decode(torch.randn(4096, 2, device=DEVICE)),
                 filename="final_generated_checker.jpg", title="Generated")
 
+    print("Done.")

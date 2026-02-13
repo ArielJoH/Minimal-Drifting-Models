@@ -164,73 +164,60 @@ def normalize_drift(V: Tensor, target_variance: float = 1.0) -> Tensor:
     return V * scale
 
 
+
 def compute_drift(
     x: Tensor,
     y_pos: Tensor,
     y_neg: Tensor,
-    temps: tuple[float, ...] = (0.02, 0.05, 0.2),
+    temp: float = 0.05,
 ) -> Tensor:
     """
-    Multi-temperature mean-shift drifting field with explicit negative samples.
-
-    Uses doubly-normalized softmax (geometric mean of row/col softmax) over
-    concatenated positive and negative affinities, then factorized weights
-    to compute V = W_pos @ y_pos - W_neg @ y_neg.
-
-    Each per-temperature V is normalized so E[||V||^2] ~ 1 before summing.
-    Final V is also normalized to target variance.
+    Compute the mean-shift drifting field V.
 
     Args:
-        x:     Query points [N, D]
-        y_pos: Positive (target) samples [N_pos, D]
-        y_neg: Negative (current distribution) samples [N_neg, D]
-        temps: Kernel temperatures to average over
+        x:     Query points (generated samples) [N, D]
+        y_pos: Positive samples (data) [N_pos, D]
+        y_neg: Negative samples (generated) [N_neg, D]
+        temp:  Kernel temperature
 
     Returns:
-        V_norm: Normalized drift vectors [N, D]
+        V: Drift vectors [N, D]
     """
-    N, N_pos, N_neg = x.shape[0], y_pos.shape[0], y_neg.shape[0]
+    N, N_pos = x.shape[0], y_pos.shape[0]
 
-    # normalize for kernel computation — use x's stats for all
-    x_n, mean, std, scale, _ = normalize_features(x)
-    y_pos_n, _, _, _, _ = normalize_features(y_pos, mean=mean, std=std, scale=scale)
-    y_neg_n, _, _, _, _ = normalize_features(y_neg, mean=mean, std=std, scale=scale)
-
-    # Single GEMM: Sinkhorn absorbs per-row/per-col additive constants
-    # (||x||^2, ||y||^2), so logit = 2*x@y^T / temp suffices
-    y_all = torch.cat([y_pos_n, y_neg_n], dim=0)                   # [N_pos + N_neg, D]
-    dots = x_n @ y_all.t()                                         # [N, N_pos + N_neg]
+    # pairwise L2 distances
+    dist_pos = torch.cdist(x, y_pos)                   # [N, N_pos]
+    dist_neg = torch.cdist(x, y_neg)                    # [N, N_neg]
 
     # mask self-interactions (y_neg = x in standard usage)
-    if N == N_neg:
-        dots[:, N_pos:].fill_diagonal_(-1e6)
+    if N == y_neg.shape[0]:
+        dist_neg = dist_neg + torch.eye(N, device=x.device) * 1e6
 
-    V = torch.zeros_like(x)
-    for temp in temps:
-        logit = (2.0 / temp) * dots                                # [N, N_pos + N_neg]
+    # logits: -dist / temp
+    logit = torch.cat([
+        -dist_pos / temp,
+        -dist_neg / temp,
+    ], dim=1)                                           # [N, N_pos + N_neg]
 
-        # Sinkhorn: doubly-stochastic transport plan over pos+neg
-        for _ in range(10):
-            logit = logit - logit.logsumexp(dim=-1, keepdim=True)
-            logit = logit - logit.logsumexp(dim=-2, keepdim=True)
-        A = logit.exp()                                            # [N, N_pos + N_neg]
+    # doubly-normalized affinity: softmax over both dims, geometric mean
+    A_row = logit.softmax(dim=-1)                       # normalize over y
+    A_col = logit.softmax(dim=-2)                       # normalize over x
+    A = (A_row * A_col).sqrt()
 
-        A_pos = A[:, :N_pos]                                       # [N, N_pos]
-        A_neg = A[:, N_pos:]                                       # [N, N_neg]
+    # split into positive and negative affinities
+    A_pos = A[:, :N_pos]                                # [N, N_pos]
+    A_neg = A[:, N_pos:]                                # [N, N_neg]
 
-        # factorized weights
-        W_pos = A_pos * A_neg.sum(dim=1, keepdim=True)
-        W_neg = A_neg * A_pos.sum(dim=1, keepdim=True)
+    # factorized weights for compact form:
+    # W_pos[i,j] = A_pos[i,j] * sum_k A_neg[i,k]
+    # W_neg[i,k] = A_neg[i,k] * sum_j A_pos[i,j]
+    W_pos = A_pos * A_neg.sum(dim=1, keepdim=True)
+    W_neg = A_neg * A_pos.sum(dim=1, keepdim=True)
 
-        # displacement in original (un-normalized) space
-        V_tau = W_pos @ y_pos - W_neg @ y_neg
+    # V[i] = sum_j sum_k A_pos[i,j] A_neg[i,k] (y_pos[j] - y_neg[k])
+    V = W_pos @ y_pos - W_neg @ y_neg
 
-        # normalize each temperature's V so E[||V||^2] ~ 1
-        V_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
-        V = V + V_tau / V_norm
-
-    return normalize_drift(V)
-
+    return V
 # =============================================================================
 # Drifting Loss  (Algorithm 1 from paper)
 # =============================================================================
@@ -243,7 +230,6 @@ def compute_drift(
 def drifting_loss(
     x: Tensor,
     y_pos: Tensor,
-    temps: tuple[float, ...] = (0.02, 0.05, 0.2),
 ) -> Tensor:
     """
     Compute per-sample drifting loss.  y_neg = x (current distribution).
@@ -257,7 +243,7 @@ def drifting_loss(
         loss: Per-sample loss [N]
     """
     with torch.no_grad():
-        V_norm = compute_drift(x, y_pos, x, temps=temps)
+        V_norm = compute_drift(x, y_pos, x)
         target = (x + V_norm).detach()
     return ((x - target) ** 2).sum(dim=-1)
 
@@ -274,14 +260,12 @@ class DriftingAutoencoder(nn.Module):
     Decoder maps latent -> data.
     """
 
-    def __init__(self, data_dim: int = 2, hidden_dim: int = 256, latent_dim: int = 2,
-                 temps: tuple[float, ...] = (0.02, 0.05)):
+    def __init__(self, data_dim: int = 2, hidden_dim: int = 256, latent_dim: int = 2):
         super().__init__()
         self.encoder = Net(data_dim, hidden_dim, latent_dim)
         self.decoder = Net(latent_dim, hidden_dim, data_dim)
         self.latent_dim = latent_dim
         self.data_dim = data_dim
-        self.temps = temps
 
     def forward(self, data: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
@@ -293,18 +277,14 @@ class DriftingAutoencoder(nn.Module):
         """
         encoded = self.encoder(data)
         prior = torch.randn(data.shape[0], self.latent_dim, device=data.device)
-        enc_loss = drifting_loss(encoded, prior, temps=self.temps)
+        enc_loss = drifting_loss(encoded, prior)
 
         # L1 reconstruction from encoded inputs
         decoded = self.decoder(encoded)
         dec_loss = F.l1_loss(decoded, data, reduction='none').sum(dim=-1)
 
-        # drifting loss on prior samples pushed through decoder
-        z = torch.randn(data.shape[0], self.latent_dim, device=data.device)
-        decoded_z = self.decoder(z)
-        sample_loss = drifting_loss(decoded_z, data, temps=self.temps)
 
-        return enc_loss, dec_loss, sample_loss
+        return enc_loss, dec_loss
 
     @torch.no_grad()
     def encode(self, data: Tensor) -> Tensor:
@@ -380,7 +360,7 @@ def train(
     n_iter: int = 5000,
     batch_size: int = 2048,
     lr: float = 1e-3,
-    sample_every: int = 1000,
+    sample_every: int = 100,
     n_samples: int = 4096,
 ):
     """Train a drifting autoencoder."""
@@ -390,8 +370,8 @@ def train(
     for i in pbar:
         data = data_fn(batch_size)
 
-        enc_loss, dec_loss, sample_loss = model(data)
-        loss = enc_loss.mean() + dec_loss.mean() + sample_loss.mean()
+        enc_loss, dec_loss = model(data)
+        loss = enc_loss.mean() + dec_loss.mean()
 
         optimizer.zero_grad()
         loss.backward()
@@ -401,7 +381,6 @@ def train(
             pbar.set_description(
                 f"enc: {enc_loss.mean().item():.4f}  "
                 f"dec: {dec_loss.mean().item():.4f}  "
-                f"smp: {sample_loss.mean().item():.4f}"
             )
 
         if (i + 1) % sample_every == 0:

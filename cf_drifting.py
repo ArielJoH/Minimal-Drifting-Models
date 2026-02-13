@@ -120,8 +120,7 @@ def cf_drifting_loss_empirical(
     """
     Drifting loss using full multivariate CF drift toward empirical y.
 
-    Instead of slicing to 1D and integrating over scalar t, sample F
-    random frequency vectors f ~ N(0, freq_std^2 I) in R^D and compare
+    Sample F random frequency vectors f ~ N(0, freq_std^2 I) in R^D and compare
     the D-dimensional characteristic functions directly:
 
       D = (1/F) sum_f |phi_mu(f) - phi_nu(f)|^2

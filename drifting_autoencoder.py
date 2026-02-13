@@ -429,7 +429,7 @@ if __name__ == "__main__":
 
     print("\n--- Training on 8 Gaussians ---")
     model = DriftingAutoencoder(data_dim=2, hidden_dim=256, latent_dim=2).to(DEVICE)
-    train(model, gen_data, tag="8gauss", n_iter=100_000, batch_size=2048)
+    train(model, gen_data, tag="8gauss", n_iter=10_000, batch_size=2048)
 
     model.eval()
     data_final = gen_data(4096)
@@ -439,7 +439,7 @@ if __name__ == "__main__":
 
     print("\n--- Training on Checkerboard ---")
     model2 = DriftingAutoencoder(data_dim=2, hidden_dim=256, latent_dim=2).to(DEVICE)
-    train(model2, gen_checkerboard, tag="checker", n_iter=100_000, batch_size=2048)
+    train(model2, gen_checkerboard, tag="checker", n_iter=10_000, batch_size=2048)
 
     model2.eval()
     data_final2 = gen_checkerboard(4096)

@@ -12,3 +12,15 @@ python drifting.py
 ```
 
 Trains on 8 Gaussians and checkerboard. Outputs scatter plots and drift field visualizations.
+
+
+# Extensions
+
+## Sinkhorn 
+Self explainatory.
+
+## CF Drifting
+
+A generator G: z -> x is trained by iteratively drifting its output distribution toward the data distribution. The drift field is the functional gradient of the characteristic function (CF) distance.
+
+Complexity is O(N * F) where F = number of frequency vectors.

